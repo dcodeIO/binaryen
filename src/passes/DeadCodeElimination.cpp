@@ -51,12 +51,20 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
   std::set<Name> reachableBreaks;
 
   void addBreak(Name name) {
-    assert(reachable);
-    reachableBreaks.insert(name);
+    // we normally have already reduced unreachable code into (unreachable)
+    // nodes, so we would not get to this function at all anyhow, the breaking
+    // instruction itself would be removed. However, an exception are things
+    // like  (block i32 (call $x) (unreachable)) , which has type i32
+    // despite not being exited.
+    // TODO: optimize such cases
+    if (reachable) {
+      reachableBreaks.insert(name);
+    }
   }
 
-  bool isDead(Expression* curr) {
-    return curr && curr->is<Unreachable>();
+  // if a child is unreachable, we can replace ourselves with it
+  bool isDead(Expression* child) {
+    return child && child->type == unreachable;
   }
 
   // things that stop control flow
@@ -65,6 +73,23 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
     if (isDead(curr->value)) {
       // the condition is evaluated last, so if the value was unreachable, the whole thing is
       replaceCurrent(curr->value);
+      return;
+    }
+    if (isDead(curr->condition)) {
+      if (curr->value) {
+        auto* block = getModule()->allocator.alloc<Block>();
+        block->list.resize(2);
+        block->list[0] = drop(curr->value);
+        block->list[1] = curr->condition;
+        // if we previously returned a value, then this block
+        // must have the same type, so it fits in the ast
+        // properly. it ends in an unreachable
+        // anyhow, so that is ok.
+        block->finalize(curr->type);
+        replaceCurrent(block);
+      } else {
+        replaceCurrent(curr->condition);
+      }
       return;
     }
     addBreak(curr->name);
@@ -76,6 +101,19 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
   void visitSwitch(Switch* curr) {
     if (isDead(curr->value)) {
       replaceCurrent(curr->value);
+      return;
+    }
+    if (isDead(curr->condition)) {
+      if (curr->value) {
+        auto* block = getModule()->allocator.alloc<Block>();
+        block->list.resize(2);
+        block->list[0] = drop(curr->value);
+        block->list[1] = curr->condition;
+        block->finalize(curr->type);
+        replaceCurrent(block);
+      } else {
+        replaceCurrent(curr->condition);
+      }
       return;
     }
     for (auto target : curr->targets) {
@@ -137,7 +175,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
       reachable = reachable || reachableBreaks.count(curr->name);
       reachableBreaks.erase(curr->name);
     }
-    if (curr->list.size() == 1 && isDead(curr->list[0])) {
+    if (curr->list.size() == 1 && isDead(curr->list[0]) && !BreakSeeker::has(curr->list[0], curr->name)) {
       replaceCurrent(curr->list[0]);
     }
   }
@@ -146,7 +184,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
     if (curr->name.is()) {
       reachableBreaks.erase(curr->name);
     }
-    if (isDead(curr->body)) {
+    if (isDead(curr->body) && !BreakSeeker::has(curr->body, curr->name)) {
       replaceCurrent(curr->body);
       return;
     }
@@ -237,8 +275,9 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
 
   // other things
 
+  // we don't need to drop unreachable nodes
   Expression* drop(Expression* toDrop) {
-    if (toDrop->is<Unreachable>()) return toDrop;
+    if (toDrop->type == unreachable) return toDrop;
     return Builder(*getModule()).makeDrop(toDrop);
   }
 
@@ -254,7 +293,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
           for (; j < newSize; j++) {
             block->list[j] = drop(curr->operands[j]);
           }
-          block->finalize();
+          block->finalize(curr->type);
           return replaceCurrent(block);
         } else {
           return replaceCurrent(curr->operands[i]);
@@ -280,7 +319,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
         block->list.push_back(drop(operand));
       }
       block->list.push_back(curr->target);
-      block->finalize();
+      block->finalize(curr->type);
       replaceCurrent(block);
     }
   }
@@ -307,7 +346,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
       block->list.resize(2);
       block->list[0] = drop(curr->ptr);
       block->list[1] = curr->value;
-      block->finalize();
+      block->finalize(curr->type);
       replaceCurrent(block);
     }
   }
@@ -328,7 +367,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
       block->list.resize(2);
       block->list[0] = drop(curr->left);
       block->list[1] = curr->right;
-      block->finalize();
+      block->finalize(curr->type);
       replaceCurrent(block);
     }
   }
@@ -343,7 +382,7 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
       block->list.resize(2);
       block->list[0] = drop(curr->ifTrue);
       block->list[1] = curr->ifFalse;
-      block->finalize();
+      block->finalize(curr->type);
       replaceCurrent(block);
       return;
     }
@@ -353,14 +392,14 @@ struct DeadCodeElimination : public WalkerPass<PostWalker<DeadCodeElimination>> 
       block->list[0] = drop(curr->ifTrue);
       block->list[1] = drop(curr->ifFalse);
       block->list[2] = curr->condition;
-      block->finalize();
+      block->finalize(curr->type);
       replaceCurrent(block);
       return;
     }
   }
 
   void visitHost(Host* curr) {
-    // TODO
+    handleCall(curr);
   }
 
   void visitFunction(Function* curr) {
