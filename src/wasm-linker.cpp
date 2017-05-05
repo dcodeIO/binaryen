@@ -263,18 +263,6 @@ void Linker::layout() {
     }
   }
 
-  // Export malloc/realloc/free/memalign whenever availble. JavsScript version of
-  // malloc has some issues and it cannot be called once _sbrk() is called, and
-  // JS glue code does not have realloc().  TODO This should get the list of
-  // exported functions from emcc.py - it has EXPORTED_FUNCTION metadata to keep
-  // track of this. Get the list of exported functions using a command-line
-  // argument from emcc.py and export all of them.
-  for (auto function : {"malloc", "free", "realloc", "memalign"}) {
-    if (out.symbolInfo.implementedFunctions.count(function)) {
-      exportFunction(function, true);
-    }
-  }
-
   // finalize function table
   unsigned int tableSize = getTableData().size();
   if (tableSize > 0) {
