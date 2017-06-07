@@ -84,6 +84,9 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
           flows.push_back(flow);
         }
         self->ifStack.pop_back();
+      } else {
+        // if without else stops the flow of values
+        self->valueCanFlow = false;
       }
     } else if (curr->is<Block>()) {
       // any breaks flowing to here are unnecessary, as we get here anyhow
@@ -122,6 +125,8 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
     } else if (curr->is<Nop>()) {
       // ignore (could be result of a previous cycle)
       self->valueCanFlow = false;
+    } else if (curr->is<Loop>()) {
+      // do nothing - it's ok for values to flow out
     } else {
       // anything else stops the flow
       flows.clear();
@@ -303,19 +308,7 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
 
     if (worked) {
       // Our work may alter block and if types, they may now return values that we made flow through them
-      struct TypeUpdater : public WalkerPass<PostWalker<TypeUpdater>> {
-        void visitBlock(Block* curr) {
-          curr->finalize();
-        }
-        void visitLoop(Loop* curr) {
-          curr->finalize();
-        }
-        void visitIf(If* curr) {
-          curr->finalize();
-        }
-      };
-      TypeUpdater typeUpdater;
-      typeUpdater.walkFunction(func);
+      ReFinalize().walkFunctionInModule(func, getModule());
     }
 
     // thread trivial jumps
@@ -323,10 +316,7 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
       // map of all value-less breaks going to a block (and not a loop)
       std::map<Block*, std::vector<Break*>> breaksToBlock;
 
-      // number of definitions of each name - when a name is defined more than once, it is not trivially safe to do this
-      std::map<Name, Index> numDefs;
-
-      // the names to update, when we can (just one def)
+      // the names to update
       std::map<Break*, Name> newNames;
 
       void visitBreak(Break* curr) {
@@ -338,8 +328,6 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
       }
       // TODO: Switch?
       void visitBlock(Block* curr) {
-        if (curr->name.is()) numDefs[curr->name]++;
-
         auto& list = curr->list;
         if (list.size() == 1 && curr->name.is()) {
           // if this block has just one child, a sub-block, then jumps to the former are jumps to us, really
@@ -372,24 +360,23 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
           }
         }
       }
-      void visitLoop(Loop* curr) {
-        if (curr->name.is()) numDefs[curr->name]++;
-      }
 
-      void finish() {
+      void finish(Function* func) {
         for (auto& iter : newNames) {
           auto* br = iter.first;
           auto name = iter.second;
-          if (numDefs[name] == 1) {
-            br->name = name;
-          }
+          br->name = name;
+        }
+        if (newNames.size() > 0) {
+          // by changing where brs go, we may change block types etc.
+          ReFinalize().walkFunctionInModule(func, getModule());
         }
       }
     };
     JumpThreader jumpThreader;
     jumpThreader.setModule(getModule());
     jumpThreader.walkFunction(func);
-    jumpThreader.finish();
+    jumpThreader.finish(func);
 
     // perform some final optimizations
     struct FinalOptimizer : public PostWalker<FinalOptimizer> {
@@ -469,6 +456,7 @@ struct RemoveUnusedBrs : public WalkerPass<PostWalker<RemoveUnusedBrs>> {
                 ));
                 curr->name = Name();
                 ExpressionManipulator::nop(br);
+                curr->finalize(curr->type);
                 return;
               }
             }

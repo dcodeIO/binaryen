@@ -23,6 +23,7 @@
 #include <wasm-builder.h>
 #include <wasm-interpreter.h>
 #include <ast_utils.h>
+#include "ast/manipulation.h"
 
 namespace wasm {
 
@@ -116,6 +117,7 @@ struct Precompute : public WalkerPass<PostWalker<Precompute, UnifiedExpressionVi
       if (auto* br = curr->dynCast<Break>()) {
         br->name = flow.breakTo;
         br->condition = nullptr;
+        br->finalize(); // if we removed a condition, the type may change
         if (flow.value.type != none) {
           // reuse a const value if there is one
           if (br->value) {
@@ -140,6 +142,11 @@ struct Precompute : public WalkerPass<PostWalker<Precompute, UnifiedExpressionVi
     } else {
       ExpressionManipulator::nop(curr);
     }
+  }
+
+  void visitFunction(Function* curr) {
+    // removing breaks can alter types
+    ReFinalize().walkFunctionInModule(curr, getModule());
   }
 };
 

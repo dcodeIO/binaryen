@@ -25,6 +25,13 @@
 
 namespace wasm {
 
+static int isFullForced() {
+  if (getenv("BINARYEN_PRINT_FULL")) {
+    return std::stoi(getenv("BINARYEN_PRINT_FULL"));
+  }
+  return 0;
+}
+
 struct PrintSExpression : public Visitor<PrintSExpression> {
   std::ostream& o;
   unsigned indent = 0;
@@ -38,12 +45,11 @@ struct PrintSExpression : public Visitor<PrintSExpression> {
 
   Module* currModule = nullptr;
   Function* currFunction = nullptr;
+  Function::DebugLocation lastPrintedLocation;
 
   PrintSExpression(std::ostream& o) : o(o) {
     setMinify(false);
-    if (getenv("BINARYEN_PRINT_FULL")) {
-      full = std::stoi(getenv("BINARYEN_PRINT_FULL"));
-    }
+    if (!full) full = isFullForced();
   }
 
   void visit(Expression* curr) {
@@ -53,8 +59,11 @@ struct PrintSExpression : public Visitor<PrintSExpression> {
       auto iter = debugLocations.find(curr);
       if (iter != debugLocations.end()) {
         auto fileName = currModule->debugInfoFileNames[iter->second.fileIndex];
-        o << ";; " << fileName << ":" << iter->second.lineNumber << '\n';
-        doIndent(o, indent);
+        if (lastPrintedLocation != iter->second) {
+          lastPrintedLocation = iter->second;
+          o << ";;@ " << fileName << ":" << iter->second.lineNumber << ":" << iter->second.columnNumber << '\n';
+          doIndent(o, indent);
+        }
       }
     }
     Visitor<PrintSExpression>::visit(curr);
@@ -594,6 +603,7 @@ struct PrintSExpression : public Visitor<PrintSExpression> {
   }
   void visitFunction(Function *curr) {
     currFunction = curr;
+    lastPrintedLocation = { 0, 0, 0 };
     printOpening(o, "func ", true);
     printName(curr->name);
     if (curr->type.is()) {
@@ -802,7 +812,7 @@ std::ostream& WasmPrinter::printExpression(Expression* expression, std::ostream&
   }
   PrintSExpression print(o);
   print.setMinify(minify);
-  if (full) {
+  if (full || isFullForced()) {
     print.setFull(true);
     o << "[" << printWasmType(expression->type) << "] ";
   }

@@ -28,6 +28,7 @@ Name WASM("wasm"),
 namespace BinaryConsts {
 namespace UserSections {
 const char* Name = "name";
+const char* SourceMapUrl = "sourceMappingURL";
 }
 }
 
@@ -73,7 +74,7 @@ Name GROW_WASM_MEMORY("__growWasmMemory"),
 
 const char* getExpressionName(Expression* curr) {
   switch (curr->_id) {
-    case Expression::Id::InvalidId: abort();
+    case Expression::Id::InvalidId: WASM_UNREACHABLE();
     case Expression::Id::BlockId: return "block";
     case Expression::Id::IfId: return "if";
     case Expression::Id::LoopId: return "loop";
@@ -198,6 +199,16 @@ void Block::finalize() {
   if (!name.is()) {
     // nothing branches here, so this is easy
     if (list.size() > 0) {
+      // if we have an unreachable child, we are unreachable
+      // (we don't need to recurse into children, they can't
+      // break to us)
+      for (auto* child : list) {
+        if (child->type == unreachable) {
+          type = unreachable;
+          return;
+        }
+      }
+      // children are reachable, so last element determines type
       type = list.back()->type;
     } else {
       type = none;
@@ -264,6 +275,31 @@ void Switch::finalize() {
   type = unreachable;
 }
 
+template<typename T>
+void handleUnreachableOperands(T* curr) {
+  for (auto* child : curr->operands) {
+    if (child->type == unreachable) {
+      curr->type = unreachable;
+      break;
+    }
+  }
+}
+
+void Call::finalize() {
+  handleUnreachableOperands(this);
+}
+
+void CallImport::finalize() {
+  handleUnreachableOperands(this);
+}
+
+void CallIndirect::finalize() {
+  handleUnreachableOperands(this);
+  if (target->type == unreachable) {
+    type = unreachable;
+  }
+}
+
 bool FunctionType::structuralComparison(FunctionType& b) {
   if (result != b.result) return false;
   if (params.size() != b.params.size()) return false;
@@ -288,6 +324,24 @@ bool SetLocal::isTee() {
 void SetLocal::setTee(bool is) {
   if (is) type = value->type;
   else type = none;
+}
+
+void SetLocal::finalize() {
+  if (value->type == unreachable) {
+    type = unreachable;
+  }
+}
+
+void SetGlobal::finalize() {
+  if (value->type == unreachable) {
+    type = unreachable;
+  }
+}
+
+void Load::finalize() {
+  if (ptr->type == unreachable) {
+    type = unreachable;
+  }
 }
 
 void Store::finalize() {
@@ -423,6 +477,14 @@ void Select::finalize() {
   }
 }
 
+void Drop::finalize() {
+  if (value->type == unreachable) {
+    type = unreachable;
+  } else {
+    type = none;
+  }
+}
+
 void Host::finalize() {
   switch (op) {
     case PageSize: case CurrentMemory: case HasFeature: {
@@ -438,7 +500,7 @@ void Host::finalize() {
       }
       break;
     }
-    default: abort();
+    default: WASM_UNREACHABLE();
   }
 }
 

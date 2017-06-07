@@ -5,6 +5,7 @@ SET(passes_SOURCES
   DeadCodeElimination.cpp
   DuplicateFunctionElimination.cpp
   ExtractFunction.cpp
+  FlattenControlFlow.cpp
   Inlining.cpp
   LegalizeJSInterface.cpp
   LocalCSE.cpp
@@ -22,6 +23,7 @@ SET(passes_SOURCES
   Print.cpp
   PrintCallGraph.cpp
   RelooperJumpThreading.cpp
+  ReReloop.cpp
   RemoveImports.cpp
   RemoveMemory.cpp
   RemoveUnusedBrs.cpp

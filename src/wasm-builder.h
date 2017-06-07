@@ -17,7 +17,8 @@
 #ifndef wasm_wasm_builder_h
 #define wasm_wasm_builder_h
 
-#include <wasm.h>
+#include "wasm.h"
+#include "ast/manipulation.h"
 
 namespace wasm {
 
@@ -74,6 +75,11 @@ public:
       ret->list.push_back(first);
       ret->finalize();
     }
+    return ret;
+  }
+  Block* makeBlock(Name name, Expression* first = nullptr) {
+    auto* ret = makeBlock(first);
+    ret->name = name;
     return ret;
   }
   If* makeIf(Expression* condition, Expression* ifTrue, Expression* ifFalse = nullptr) {
@@ -288,7 +294,7 @@ public:
     if (!block) block = makeBlock(any);
     if (append) {
       block->list.push_back(append);
-      block->finalize(); // TODO: move out of if
+      block->finalize();
     }
     return block;
   }
@@ -302,7 +308,7 @@ public:
     block->name = name;
     if (append) {
       block->list.push_back(append);
-      block->finalize(); // TODO: move out of if
+      block->finalize();
     }
     return block;
   }
@@ -325,7 +331,7 @@ public:
         block->list.push_back(item);
       }
     }
-    block->finalize(); // TODO: move out of if
+    block->finalize();
     return block;
   }
 
@@ -374,6 +380,25 @@ public:
     std::swap(iff->ifTrue, iff->ifFalse);
     iff->condition = makeUnary(EqZInt32, iff->condition);
   }
+
+  // returns a replacement with the precise same type, and with
+  // minimal contents. as a replacement, this may reuse the
+  // input node
+  template<typename T>
+  Expression* replaceWithIdenticalType(T* curr) {
+    Literal value;
+    // TODO: reuse node conditionally when possible for literals
+    switch (curr->type) {
+      case i32: value = Literal(int32_t(0)); break;
+      case i64: value = Literal(int64_t(0)); break;
+      case f32: value = Literal(float(0)); break;
+      case f64: value = Literal(double(0)); break;
+      case none: return ExpressionManipulator::nop(curr);
+      case unreachable: return ExpressionManipulator::convert<T, Unreachable>(curr);
+    }
+    return makeConst(value);
+  }
+
 };
 
 } // namespace wasm

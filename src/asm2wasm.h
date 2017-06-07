@@ -35,7 +35,6 @@
 #include "wasm-builder.h"
 #include "wasm-emscripten.h"
 #include "wasm-printing.h"
-#include "wasm-validator.h"
 #include "wasm-module-building.h"
 
 namespace wasm {
@@ -478,8 +477,14 @@ private:
   }
 
   FunctionType* getFunctionType(Ref parent, ExpressionList& operands) {
-    // generate signature
-    WasmType result = !!parent ? detectWasmType(parent, nullptr) : none;
+    WasmType result = none;
+    if (!!parent) {
+      // if the parent is a seq, we cannot be the last element in it (we would have a coercion, which would be
+      // the parent), so we must be (us, somethingElse), and so our return is void
+      if (parent[0] != SEQ) {
+        result = detectWasmType(parent, nullptr);
+      }
+    }
     return ensureFunctionType(getSig(result, operands), &wasm);
   }
 
@@ -1333,6 +1338,12 @@ void Asm2WasmBuilder::processAsm(Ref ast) {
         add->left = parent->builder.makeConst(Literal((int32_t)parent->functionTableStarts[tableName]));
       }
     }
+
+    void visitFunction(Function* curr) {
+      // changing call types requires we percolate types, and drop stuff.
+      // we do this in this pass so that we don't look broken between passes
+      AutoDrop().walkFunctionInModule(curr, getModule());
+    }
   };
 
   // apply debug info, reducing intrinsic calls into annotations on the ast nodes
@@ -1371,13 +1382,13 @@ void Asm2WasmBuilder::processAsm(Ref ast) {
                 while (i < expressionStack.size()) {
                   exp = expressionStack[i];
                   if (debugLocations.count(exp) == 0) {
-                    debugLocations[exp] = { fileIndex, lineNumber };
+                    debugLocations[exp] = { fileIndex, lineNumber, 0 };
                     break;
                   }
                   i++;
                 }
               } else {
-                debugLocations[exp] = { fileIndex, lineNumber };
+                debugLocations[exp] = { fileIndex, lineNumber, 0 };
               }
               break;
             }
@@ -1394,9 +1405,9 @@ void Asm2WasmBuilder::processAsm(Ref ast) {
     passRunner.setDebug(true);
     passRunner.setValidateGlobally(false);
   }
+  // finalizeCalls also does autoDrop, which is crucial for the non-optimizing case,
+  // so that the output of the first pass is valid
   passRunner.add<FinalizeCalls>(this);
-  passRunner.add<ReFinalize>(); // FinalizeCalls changes call types, need to percolate
-  passRunner.add<AutoDrop>(); // FinalizeCalls may cause us to require additional drops
   if (legalizeJavaScriptFFI) {
     passRunner.add("legalize-js-interface");
   }
@@ -1545,8 +1556,6 @@ void Asm2WasmBuilder::processAsm(Ref ast) {
     body->finalize();
     func->body = body;
   }
-
-  assert(WasmValidator().validate(wasm));
 }
 
 Function* Asm2WasmBuilder::processFunction(Ref ast) {
@@ -2296,6 +2305,7 @@ Function* Asm2WasmBuilder::processFunction(Ref ast) {
       Break *continuer = allocator.alloc<Break>();
       continuer->name = in;
       continuer->condition = process(ast[1]);
+      continuer->finalize();
       Block *block = builder.blockifyWithName(loop->body, out, continuer);
       loop->body = block;
       loop->finalize();
@@ -2482,7 +2492,6 @@ Function* Asm2WasmBuilder::processFunction(Ref ast) {
         }
 
         top->list.push_back(br);
-        top->finalize();
 
         for (unsigned i = 0; i < cases->size(); i++) {
           Ref curr = cases[i];
@@ -2557,7 +2566,6 @@ Function* Asm2WasmBuilder::processFunction(Ref ast) {
           top->name = name;
           next->list.push_back(top);
           next->list.push_back(case_);
-          next->finalize();
           top = next;
           nameMapper.popLabelName(name);
         }
@@ -2573,7 +2581,6 @@ Function* Asm2WasmBuilder::processFunction(Ref ast) {
         first->ifFalse = builder.makeBreak(br->default_);
 
         brHolder->list.push_back(chain);
-        brHolder->finalize();
       }
 
       breakStack.pop_back();

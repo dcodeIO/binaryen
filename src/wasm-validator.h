@@ -42,6 +42,8 @@
 #include "support/colors.h"
 #include "wasm.h"
 #include "wasm-printing.h"
+#include "ast_utils.h"
+#include "ast/branch-utils.h"
 
 namespace wasm {
 
@@ -68,7 +70,7 @@ struct WasmValidator : public PostWalker<WasmValidator> {
 
   void noteLabelName(Name name) {
     if (!name.is()) return;
-    shouldBeTrue(labelNames.find(name) == labelNames.end(), name, "names in Binaren IR must be unique - IR generators must ensure that");
+    shouldBeTrue(labelNames.find(name) == labelNames.end(), name, "names in Binaryen IR must be unique - IR generators must ensure that");
     labelNames.insert(name);
   }
 
@@ -76,7 +78,13 @@ public:
   bool validate(Module& module, bool validateWeb_ = false, bool validateGlobally_ = true) {
     validateWeb = validateWeb_;
     validateGlobally = validateGlobally_;
+    // wasm logic validation
     walkModule(&module);
+    // validate additional internal IR details when in pass-debug mode
+    if (PassRunner::getPassDebug()) {
+      validateBinaryenIR(module);
+    }
+    // print if an error occurred
     if (!valid) {
       WasmPrinter::printModule(&module, std::cerr);
     }
@@ -222,16 +230,22 @@ public:
     }
   }
   void visitBreak(Break *curr) {
-    noteBreak(curr->name, curr->value, curr);
+    // note breaks (that are actually taken)
+    if (BranchUtils::isBranchTaken(curr)) {
+      noteBreak(curr->name, curr->value, curr);
+    }
     if (curr->condition) {
       shouldBeTrue(curr->condition->type == unreachable || curr->condition->type == i32, curr, "break condition must be i32");
     }
   }
   void visitSwitch(Switch *curr) {
-    for (auto& target : curr->targets) {
-      noteBreak(target, curr->value, curr);
+    // note breaks (that are actually taken)
+    if (BranchUtils::isBranchTaken(curr)) {
+      for (auto& target : curr->targets) {
+        noteBreak(target, curr->value, curr);
+      }
+      noteBreak(curr->default_, curr->value, curr);
     }
-    noteBreak(curr->default_, curr->value, curr);
     shouldBeTrue(curr->condition->type == unreachable || curr->condition->type == i32, curr, "br_table condition must be i32");
   }
   void visitCall(Call *curr) {
@@ -394,17 +408,26 @@ public:
     switch (curr->op) {
       case ClzInt32:
       case CtzInt32:
-      case PopcntInt32:
+      case PopcntInt32: {
+        shouldBeEqual(curr->value->type, i32, curr, "i32 unary value type must be correct");
+        break;
+      }
+      case ClzInt64:
+      case CtzInt64:
+      case PopcntInt64: {
+        shouldBeEqual(curr->value->type, i64, curr, "i64 unary value type must be correct");
+        break;
+      }
       case NegFloat32:
       case AbsFloat32:
       case CeilFloat32:
       case FloorFloat32:
       case TruncFloat32:
       case NearestFloat32:
-      case SqrtFloat32:
-      case ClzInt64:
-      case CtzInt64:
-      case PopcntInt64:
+      case SqrtFloat32: {
+        shouldBeEqual(curr->value->type, f32, curr, "f32 unary value type must be correct");
+        break;
+      }
       case NegFloat64:
       case AbsFloat64:
       case CeilFloat64:
@@ -412,7 +435,7 @@ public:
       case TruncFloat64:
       case NearestFloat64:
       case SqrtFloat64: {
-        shouldBeEqual(curr->value->type, curr->type, curr, "non-conversion unaries must return the same type");
+        shouldBeEqual(curr->value->type, f64, curr, "f64 unary value type must be correct");
         break;
       }
       case EqZInt32: {
@@ -454,6 +477,10 @@ public:
   void visitSelect(Select* curr) {
     shouldBeUnequal(curr->ifTrue->type, none, curr, "select left must be valid");
     shouldBeUnequal(curr->ifFalse->type, none, curr, "select right must be valid");
+    shouldBeTrue(curr->condition->type == unreachable || curr->condition->type == i32, curr, "select condition must be valid");
+    if (curr->ifTrue->type != unreachable && curr->ifFalse->type != unreachable) {
+      shouldBeEqual(curr->ifTrue->type, curr->ifFalse->type, curr, "select sides must be equal");
+    }
   }
 
   void visitDrop(Drop* curr) {
@@ -464,8 +491,8 @@ public:
     if (curr->value) {
       if (returnType == unreachable) {
         returnType = curr->value->type;
-      } else if (curr->value->type != unreachable && returnType != curr->value->type) {
-        returnType = none; // poison
+      } else if (curr->value->type != unreachable) {
+        shouldBeEqual(curr->value->type, returnType, curr, "function results must match");
       }
     } else {
       returnType = none;
@@ -533,17 +560,26 @@ public:
     if (curr->body->type != unreachable) {
       shouldBeEqual(curr->result, curr->body->type, curr->body, "function body type must match, if function returns");
     }
-    if (curr->result != none) { // TODO: over previous too?
-      if (returnType != unreachable) {
-        shouldBeEqual(curr->result, returnType, curr->body, "function result must match, if function returns");
-      }
+    if (returnType != unreachable) {
+      shouldBeEqual(curr->result, returnType, curr->body, "function result must match, if function has returns");
     }
     returnType = unreachable;
     labelNames.clear();
   }
 
-  bool isConstant(Expression* curr) {
-    return curr->is<Const>() || curr->is<GetGlobal>();
+  bool checkOffset(Expression* curr, Address add, Address max) {
+    if (curr->is<GetGlobal>()) return true;
+    auto* c = curr->dynCast<Const>();
+    if (!c) return false;
+    uint64_t raw = c->value.getInteger();
+    if (raw > std::numeric_limits<Address::address_t>::max()) {
+      return false;
+    }
+    if (raw + uint64_t(add) > std::numeric_limits<Address::address_t>::max()) {
+      return false;
+    }
+    Address offset = raw;
+    return offset + add <= max;
   }
 
   void visitMemory(Memory *curr) {
@@ -552,7 +588,7 @@ public:
     Index mustBeGreaterOrEqual = 0;
     for (auto& segment : curr->segments) {
       if (!shouldBeEqual(segment.offset->type, i32, segment.offset, "segment offset should be i32")) continue;
-      shouldBeTrue(isConstant(segment.offset), segment.offset, "segment offset should be constant");
+      shouldBeTrue(checkOffset(segment.offset, segment.data.size(), getModule()->memory.initial * Memory::kPageSize), segment.offset, "segment offset should be reasonable");
       Index size = segment.data.size();
       shouldBeTrue(size <= curr->initial * Memory::kPageSize, segment.data.size(), "segment size should fit in memory");
       if (segment.offset->is<Const>()) {
@@ -567,7 +603,7 @@ public:
   void visitTable(Table* curr) {
     for (auto& segment : curr->segments) {
       shouldBeEqual(segment.offset->type, i32, segment.offset, "segment offset should be i32");
-      shouldBeTrue(isConstant(segment.offset), segment.offset, "segment offset should be constant");
+      shouldBeTrue(checkOffset(segment.offset, segment.data.size(), getModule()->table.initial * Table::kPageSize), segment.offset, "segment offset should be reasonable");
     }
   }
   void visitModule(Module *curr) {
@@ -611,8 +647,6 @@ public:
   void doWalkFunction(Function* func) {
     PostWalker<WasmValidator>::doWalkFunction(func);
   }
-
-private:
 
   // helpers
 
@@ -717,6 +751,37 @@ private:
       }
       default: {}
     }
+  }
+
+  void validateBinaryenIR(Module& wasm) {
+    struct BinaryenIRValidator : public PostWalker<BinaryenIRValidator, UnifiedExpressionVisitor<BinaryenIRValidator>> {
+      WasmValidator& parent;
+
+      BinaryenIRValidator(WasmValidator& parent) : parent(parent) {}
+
+      void visitExpression(Expression* curr) {
+        // check if a node type is 'stale', i.e., we forgot to finalize() the node.
+        auto oldType = curr->type;
+        ReFinalizeNode().visit(curr);
+        auto newType = curr->type;
+        if (newType != oldType) {
+          // We accept concrete => undefined,
+          // e.g.
+          //
+          //  (drop (block i32 (unreachable)))
+          //
+          // The block has an added type, not derived from the ast itself, so it is
+          // ok for it to be either i32 or unreachable.
+          if (!(isConcreteWasmType(oldType) && newType == unreachable)) {
+            parent.fail() << "stale type found in " << (getFunction() ? getFunction()->name : Name("(global scope)")) << " on " << curr << "\n(marked as " << printWasmType(oldType) << ", should be " << printWasmType(newType) << ")\n";
+            parent.valid = false;
+          }
+          curr->type = oldType;
+        }
+      }
+    };
+    BinaryenIRValidator binaryenIRValidator(*this);
+    binaryenIRValidator.walkModule(&wasm);
   }
 };
 

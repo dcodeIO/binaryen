@@ -70,6 +70,7 @@ void PassRegistry::registerPasses() {
   registerPass("dce", "removes unreachable code", createDeadCodeEliminationPass);
   registerPass("duplicate-function-elimination", "removes duplicate functions", createDuplicateFunctionEliminationPass);
   registerPass("extract-function", "leaves just one function (useful for debugging)", createExtractFunctionPass);
+  registerPass("flatten-control-flow", "flattens out control flow to be only on blocks, not nested as expressions", createFlattenControlFlowPass);
   registerPass("inlining", "inlines functions (currently only ones with a single use)", createInliningPass);
   registerPass("legalize-js-interface", "legalizes i64 types on the import/export boundary", createLegalizeJSInterfacePass);
   registerPass("local-cse", "common subexpression elimination inside basic blocks", createLocalCSEPass);
@@ -95,6 +96,7 @@ void PassRegistry::registerPasses() {
   registerPass("remove-unused-names", "removes names from locations that are never branched to", createRemoveUnusedNamesPass);
   registerPass("reorder-functions", "sorts functions by access frequency", createReorderFunctionsPass);
   registerPass("reorder-locals", "sorts locals by access frequency", createReorderLocalsPass);
+  registerPass("rereloop", "re-optimize control flow using the relooper algorithm", createReReloopPass);
   registerPass("simplify-locals", "miscellaneous locals-related optimizations", createSimplifyLocalsPass);
   registerPass("simplify-locals-notee", "miscellaneous locals-related optimizations", createSimplifyLocalsNoTeePass);
   registerPass("simplify-locals-nostructure", "miscellaneous locals-related optimizations", createSimplifyLocalsNoStructurePass);
@@ -134,8 +136,9 @@ void PassRunner::addDefaultFunctionOptimizationPasses() {
   add("simplify-locals");
   add("vacuum"); // previous pass creates garbage
   add("reorder-locals");
+  add("merge-blocks"); // makes remove-unused-brs more effective
   add("remove-unused-brs"); // coalesce-locals opens opportunities for optimizations
-  add("merge-blocks");
+  add("merge-blocks"); // clean up remove-unused-brs new blocks
   add("optimize-instructions");
   add("precompute");
   if (options.shrinkLevel >= 2) {
@@ -163,11 +166,7 @@ static void dumpWast(Name name, Module* wasm) {
 }
 
 void PassRunner::run() {
-  // BINARYEN_PASS_DEBUG is a convenient commandline way to log out the toplevel passes, their times,
-  //                     and validate between each pass.
-  //                     (we don't recurse pass debug into sub-passes, as it doesn't help anyhow and
-  //                     also is bad for e.g. printing which is a pass)
-  static const int passDebug = getenv("BINARYEN_PASS_DEBUG") ? atoi(getenv("BINARYEN_PASS_DEBUG")) : 0;
+  static const int passDebug = getPassDebug();
   if (!isNested && (options.debug || passDebug)) {
     // for debug logging purposes, run each pass in full before running the other
     auto totalTime = std::chrono::duration<double>(0);
@@ -209,7 +208,7 @@ void PassRunner::run() {
         if (passDebug >= 2) {
           std::cerr << "Last pass (" << pass->name << ") broke validation. Here is the module before: \n" << moduleBefore.str() << "\n";
         } else {
-          std::cerr << "Last pass (" << pass->name << ") broke validation. Run with BINARYEN_PASS_DEBUG=2 in the env to see the earlier state (FIXME: this is broken, need to prevent recursion of the print pass\n";
+          std::cerr << "Last pass (" << pass->name << ") broke validation. Run with BINARYEN_PASS_DEBUG=2 in the env to see the earlier state, or 3 to dump byn-* files for each pass\n";
         }
         abort();
       }
@@ -291,18 +290,15 @@ void PassRunner::doAdd(Pass* pass) {
 }
 
 void PassRunner::runPassOnFunction(Pass* pass, Function* func) {
-#if 0
-  if (debug) {
-    std::cerr << "[PassRunner]   runPass " << pass->name << " OnFunction " << func->name << "\n";
-  }
-#endif
+  assert(pass->isFunctionParallel());
   // function-parallel passes get a new instance per function
-  if (pass->isFunctionParallel()) {
-    auto instance = std::unique_ptr<Pass>(pass->create());
-    instance->runFunction(this, wasm, func);
-  } else {
-    pass->runFunction(this, wasm, func);
-  }
+  auto instance = std::unique_ptr<Pass>(pass->create());
+  instance->runFunction(this, wasm, func);
+}
+
+int PassRunner::getPassDebug() {
+  static const int passDebug = getenv("BINARYEN_PASS_DEBUG") ? atoi(getenv("BINARYEN_PASS_DEBUG")) : 0;
+  return passDebug;
 }
 
 } // namespace wasm

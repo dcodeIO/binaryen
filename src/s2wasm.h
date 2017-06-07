@@ -44,6 +44,7 @@ class S2WasmBuilder {
   MixedArena* allocator;
   LinkerObject* linkerObj;
   std::unique_ptr<LinkerObject::SymbolInfo> symbolInfo;
+  std::unordered_map<uint32_t, uint32_t> fileIndexMap;
 
  public:
   S2WasmBuilder(const char* input, bool debug)
@@ -604,7 +605,9 @@ class S2WasmBuilder {
       size_t fileId = getInt();
       skipWhitespace();
       auto quoted = getQuoted();
-      WASM_UNUSED(fileId); WASM_UNUSED(quoted); // TODO: use the fileId and quoted
+      uint32_t index = wasm->debugInfoFileNames.size();
+      fileIndexMap[fileId] = index;
+      wasm->debugInfoFileNames.push_back(std::string(quoted.begin(), quoted.end()));
       s = strchr(s, '\n');
       return;
     }
@@ -672,22 +675,31 @@ class S2WasmBuilder {
 
     mustMatch(":");
 
+    Function::DebugLocation debugLocation = { 0, 0, 0 };
+    bool useDebugLocation = false;
     auto recordFile = [&]() {
       if (debug) dump("file");
       size_t fileId = getInt();
       skipWhitespace();
       auto quoted = getQuoted();
-      WASM_UNUSED(fileId); WASM_UNUSED(quoted); // TODO: use the fileId and quoted
+      uint32_t index = wasm->debugInfoFileNames.size();
+      fileIndexMap[fileId] = index;
+      wasm->debugInfoFileNames.push_back(std::string(quoted.begin(), quoted.end()));
       s = strchr(s, '\n');
     };
     auto recordLoc = [&]() {
       if (debug) dump("loc");
       size_t fileId = getInt();
       skipWhitespace();
-      size_t row = getInt();
+      uint32_t row = getInt();
       skipWhitespace();
-      size_t column = getInt();
-      WASM_UNUSED(fileId); WASM_UNUSED(row); WASM_UNUSED(column); // TODO: use the fileId, row and column
+      uint32_t column = getInt();
+      auto iter = fileIndexMap.find(fileId);
+      if (iter == fileIndexMap.end()) {
+        abort_on("idx");
+      }
+      useDebugLocation = true;
+      debugLocation = { iter->second, row, column };
       s = strchr(s, '\n');
     };
     auto recordLabel = [&]() {
@@ -753,7 +765,10 @@ class S2WasmBuilder {
     // parse body
     func->body = allocator->alloc<Block>();
     std::vector<Expression*> bstack;
-    auto addToBlock = [&bstack](Expression* curr) {
+    auto addToBlock = [&](Expression* curr) {
+      if (useDebugLocation) {
+        func->debugLocations[curr] = debugLocation;
+      }
       Expression* last = bstack.back();
       if (last->is<Loop>()) {
         last = last->cast<Loop>()->body;
@@ -1192,6 +1207,7 @@ class S2WasmBuilder {
         if (isConcreteWasmType(block->type) && block->list.size() == 0) {
           // empty blocks that return a value are not valid, fix that up
           block->list.push_back(allocator->alloc<Unreachable>());
+          block->finalize();
         }
         bstack.pop_back();
       } else if (peek(".LBB")) {
@@ -1214,7 +1230,7 @@ class S2WasmBuilder {
       } else if (match("end_loop")) {
         auto* loop = bstack.back()->cast<Loop>();
         bstack.pop_back();
-        loop->body->finalize();
+        loop->body->cast<Block>()->finalize();
         loop->finalize(loop->type);
       } else if (match("br_table")) {
         auto curr = allocator->alloc<Switch>();
@@ -1300,7 +1316,7 @@ class S2WasmBuilder {
     bstack.pop_back(); // remove the base block for the function body
     assert(bstack.empty());
     assert(estack.empty());
-    func->body->dynCast<Block>()->finalize();
+    func->body->cast<Block>()->finalize();
     wasm->addFunction(func);
   }
 

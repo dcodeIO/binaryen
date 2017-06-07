@@ -33,6 +33,9 @@ void WasmBinaryWriter::prepare() {
 
 void WasmBinaryWriter::write() {
   writeHeader();
+  if (sourceMap) {
+    writeSourceMapProlog();
+  }
 
   writeTypes();
   writeImports();
@@ -46,8 +49,12 @@ void WasmBinaryWriter::write() {
   writeFunctions();
   writeDataSegments();
   if (debugInfo) writeNames();
+  if (sourceMap) writeSourceMapUrl();
   if (symbolMap.size() > 0) writeSymbolMap();
 
+  if (sourceMap) {
+    writeSourceMapEpilog();
+  }
   finishUp();
 }
 
@@ -236,6 +243,7 @@ void WasmBinaryWriter::writeFunctions() {
     size_t sizePos = writeU32LEBPlaceholder();
     size_t start = o.size();
     Function* function = wasm->functions[i].get();
+    currFunction = function;
     mappedLocals.clear();
     numLocalsByType.clear();
     if (debug) std::cerr << "writing" << function->name << std::endl;
@@ -258,6 +266,7 @@ void WasmBinaryWriter::writeFunctions() {
     if (debug) std::cerr << "body size: " << size << ", writing at " << sizePos << ", next starts at " << o.size() << std::endl;
     o.writeAt(sizePos, U32LEB(size));
   }
+  currFunction = nullptr;
   finishSection(start);
 }
 
@@ -420,6 +429,14 @@ void WasmBinaryWriter::writeNames() {
   finishSection(start);
 }
 
+void WasmBinaryWriter::writeSourceMapUrl() {
+  if (debug) std::cerr << "== writeSourceMapUrl" << std::endl;
+  auto start = startSection(BinaryConsts::Section::User);
+  writeInlineString(BinaryConsts::UserSections::SourceMapUrl);
+  writeInlineString(sourceMapUrl.c_str());
+  finishSection(start);
+}
+
 void WasmBinaryWriter::writeSymbolMap() {
   std::ofstream file(symbolMap);
   for (auto& import : wasm->imports) {
@@ -431,6 +448,50 @@ void WasmBinaryWriter::writeSymbolMap() {
     file << getFunctionIndex(func->name) << ":" << func->name.str << std::endl;
   }
   file.close();
+}
+
+void WasmBinaryWriter::writeSourceMapProlog() {
+  lastDebugLocation = { 0, /* lineNumber = */ 1, 0 };
+  lastBytecodeOffset = 0;
+  *sourceMap << "{\"version\":3,\"sources\":[";
+  for (size_t i = 0; i < wasm->debugInfoFileNames.size(); i++) {
+    if (i > 0) *sourceMap << ",";
+    // TODO respect JSON string encoding, e.g. quotes and control chars.
+    *sourceMap << "\"" << wasm->debugInfoFileNames[i] << "\"";
+  }
+  *sourceMap << "],\"names\":[],\"mappings\":\"";
+}
+
+void WasmBinaryWriter::writeSourceMapEpilog() {
+  *sourceMap << "\"}";
+}
+
+static void writeBase64VLQ(std::ostream& out, int32_t n) {
+  uint32_t value = n >= 0 ? n << 1 : ((-n) << 1) | 1;
+  while (1) {
+    uint32_t digit = value & 0x1F;
+    value >>= 5;
+    if (!value) {
+      // last VLQ digit -- base64 codes 'A'..'Z', 'a'..'f'
+      out << char(digit < 26 ? 'A' + digit : 'a' + digit - 26);
+      break;
+    }
+    // more VLG digit will follow -- add continuation bit (0x20),
+    // base64 codes 'g'..'z', '0'..'9', '+', '/'
+    out << char(digit < 20 ? 'g' + digit : digit < 30 ? '0' + digit - 20 : digit == 30 ? '+' : '/');
+  }
+}
+
+void WasmBinaryWriter::writeDebugLocation(size_t offset, const Function::DebugLocation& loc) {
+  if (lastBytecodeOffset > 0) {
+    *sourceMap << ",";
+  }
+  writeBase64VLQ(*sourceMap, int32_t(offset - lastBytecodeOffset));
+  writeBase64VLQ(*sourceMap, int32_t(loc.fileIndex - lastDebugLocation.fileIndex));
+  writeBase64VLQ(*sourceMap, int32_t(loc.lineNumber - lastDebugLocation.lineNumber));
+  writeBase64VLQ(*sourceMap, int32_t(loc.columnNumber - lastDebugLocation.columnNumber));
+  lastDebugLocation = loc;
+  lastBytecodeOffset = offset;
 }
 
 void WasmBinaryWriter::writeInlineString(const char* name) {
@@ -681,7 +742,8 @@ void WasmBinaryWriter::visitLoad(Load *curr) {
     }
     case f32: o << int8_t(BinaryConsts::F32LoadMem); break;
     case f64: o << int8_t(BinaryConsts::F64LoadMem); break;
-    default: abort();
+    case unreachable: return; // the pointer is unreachable, so we are never reached; just don't emit a load
+    default: WASM_UNREACHABLE();
   }
   emitMemoryAccess(curr->align, curr->bytes, curr->offset);
 }
@@ -941,6 +1003,7 @@ static Name RETURN_BREAK("binaryen|break-to-return");
 void WasmBinaryBuilder::read() {
 
   readHeader();
+  readSourceMapHeader();
 
   // read sections until the end
   while (more()) {
@@ -1346,6 +1409,7 @@ void WasmBinaryBuilder::readFunctions() {
       // process the function body
       if (debug) std::cerr << "processing function: " << i << std::endl;
       nextLabel = 0;
+      useDebugLocation = false;
       breaksToReturn = false;
       // process body
       assert(breakStack.empty());
@@ -1391,6 +1455,136 @@ void WasmBinaryBuilder::readExports() {
     exportIndexes[curr] = index;
     exportOrder.push_back(curr);
   }
+}
+
+static int32_t readBase64VLQ(std::istream& in) {
+  uint32_t value = 0;
+  uint32_t shift = 0;
+  while (1) {
+    char ch = in.get();
+    if (ch == EOF)
+      throw MapParseException("unexpected EOF in the middle of VLQ");
+    if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch < 'g')) {
+      // last number digit
+      uint32_t digit = ch < 'a' ? ch - 'A' : ch - 'a' + 26;
+      value |= digit << shift;
+      break;
+    }
+    if (!(ch >= 'g' && ch <= 'z') && !(ch >= '0' && ch <= '9') &&
+        ch != '+' && ch != '/') {
+      throw MapParseException("invalid VLQ digit");
+    }
+    uint32_t digit = ch > '9' ? ch - 'g' : (ch >= '0' ? ch - '0' + 20 : (ch == '+' ? 30 : 31));
+    value |= digit << shift;
+    shift += 5;
+  }
+  return value & 1 ? -int32_t(value >> 1) : int32_t(value >> 1);
+}
+
+void WasmBinaryBuilder::readSourceMapHeader() {
+  if (!sourceMap) return;
+
+  auto maybeReadChar = [&](char expected) {
+    if (sourceMap->peek() != expected) return false;
+    sourceMap->get();
+    return true;
+  };
+  auto mustReadChar = [&](char expected) {
+    if (sourceMap->get() != expected) {
+      throw MapParseException("Unexpected char");
+    }
+  };
+  auto findField = [&](const char* name, size_t len) {
+    bool matching = false;
+    size_t pos;
+    while (1) {
+      int ch = sourceMap->get();
+      if (ch == EOF) return false;
+      if (ch == '\"') {
+        matching = true;
+        pos = 0;
+      } else if (matching && name[pos] == ch) {
+        ++pos;
+        if (pos == len) {
+          if (maybeReadChar('\"')) break; // found field
+        }
+      } else {
+        matching = false;
+      }
+    }
+    mustReadChar(':');
+    return true;
+  };
+  auto readString = [&](std::string& str) {
+    std::vector<char> vec;
+    mustReadChar('\"');
+    if (!maybeReadChar('\"')) {
+      while (1) {
+        int ch = sourceMap->get();
+        if (ch == EOF) {
+          throw MapParseException("unexpected EOF in the middle of string");
+        }
+        if (ch == '\"') break;
+        vec.push_back(ch);
+      }
+    }
+    str = std::string(vec.begin(), vec.end());
+  };
+
+  if (!findField("sources", strlen("sources"))) {
+    throw MapParseException("cannot find the sources field in map");
+  }
+  mustReadChar('[');
+  if (!maybeReadChar(']')) {
+    do {
+      std::string file;
+      readString(file);
+      Index index = wasm.debugInfoFileNames.size();
+      wasm.debugInfoFileNames.push_back(file);
+      debugInfoFileIndices[file] = index;
+    } while (maybeReadChar(','));
+    mustReadChar(']');
+  }
+
+  if (!findField("mappings", strlen("mappings"))) {
+    throw MapParseException("cannot find the mappings field in map");
+  }
+  mustReadChar('\"');
+  if (maybeReadChar('\"')) { // empty mappings
+    nextDebugLocation.first = 0;
+    return;
+  }
+  // read first debug location
+  uint32_t position = readBase64VLQ(*sourceMap);
+  uint32_t fileIndex = readBase64VLQ(*sourceMap);
+  uint32_t lineNumber = readBase64VLQ(*sourceMap) + 1; // adjust zero-based line number
+  uint32_t columnNumber = readBase64VLQ(*sourceMap);
+  nextDebugLocation = { position, { fileIndex, lineNumber, columnNumber } };
+}
+
+void WasmBinaryBuilder::readNextDebugLocation() {
+  if (!sourceMap) return;
+
+  char ch;
+  *sourceMap >> ch;
+  if (ch == '\"') { // end of records
+    nextDebugLocation.first = 0;
+    return;
+  }
+  if (ch != ',') {
+    throw MapParseException("Unexpected delimiter");
+  }
+
+  int32_t positionDelta = readBase64VLQ(*sourceMap);
+  uint32_t position = nextDebugLocation.first + positionDelta;
+  int32_t fileIndexDelta = readBase64VLQ(*sourceMap);
+  uint32_t fileIndex = nextDebugLocation.second.fileIndex + fileIndexDelta;
+  int32_t lineNumberDelta = readBase64VLQ(*sourceMap);
+  uint32_t lineNumber = nextDebugLocation.second.lineNumber + lineNumberDelta;
+  int32_t columnNumberDelta = readBase64VLQ(*sourceMap);
+  uint32_t columnNumber = nextDebugLocation.second.columnNumber + columnNumberDelta;
+
+  nextDebugLocation = { position, { fileIndex, lineNumber, columnNumber } };
 }
 
 Expression* WasmBinaryBuilder::readExpression() {
@@ -1495,6 +1689,14 @@ void WasmBinaryBuilder::processFunctions() {
   for (auto& func : functions) {
     wasm.addFunction(func);
   }
+
+  // we should have seen all the functions
+  // we assume this later down in fact, when we read wasm.functions[index],
+  // as index was validated vs functionTypes.size()
+  if (wasm.functions.size() != functionTypes.size()) {
+    throw ParseException("did not see the right number of functions");
+  }
+
   // now that we have names for each function, apply things
 
   if (startIndex != static_cast<Index>(-1)) {
@@ -1631,6 +1833,16 @@ BinaryConsts::ASTNodes WasmBinaryBuilder::readExpression(Expression*& curr) {
     throw ParseException("Reached function end without seeing End opcode");
   }
   if (debug) std::cerr << "zz recurse into " << ++depth << " at " << pos << std::endl;
+  if (nextDebugLocation.first) {
+    while (nextDebugLocation.first && nextDebugLocation.first <= pos) {
+      if (nextDebugLocation.first < pos) {
+        std::cerr << "skipping debug location info for " << nextDebugLocation.first << std::endl;
+      }
+      debugLocation = nextDebugLocation.second;
+      useDebugLocation = currFunction; // using only for function expressions
+      readNextDebugLocation();
+    }
+  }
   uint8_t code = getInt8();
   if (debug) std::cerr << "readExpression seeing " << (int)code << std::endl;
   switch (code) {
@@ -1664,6 +1876,9 @@ BinaryConsts::ASTNodes WasmBinaryBuilder::readExpression(Expression*& curr) {
       if (maybeVisitHost(curr, code)) break;
       throw ParseException("bad node code " + std::to_string(code));
     }
+  }
+  if (useDebugLocation && curr) {
+    currFunction->debugLocations[curr] = debugLocation;
   }
   if (debug) std::cerr << "zz recurse from " << depth-- << " at " << pos << std::endl;
   return BinaryConsts::ASTNodes(code);
@@ -1737,7 +1952,6 @@ Expression* WasmBinaryBuilder::getBlock(WasmType type) {
   Name label = getNextLabel();
   breakStack.push_back({label, type != none && type != unreachable});
   auto* block = Builder(wasm).blockify(getMaybeBlock(type));
-  block->finalize();
   breakStack.pop_back();
   block->cast<Block>()->name = label;
   return block;
@@ -1805,6 +2019,7 @@ void WasmBinaryBuilder::visitSwitch(Switch *curr) {
   curr->default_ = defaultTarget.name;
   if (debug) std::cerr << "default: "<< curr->default_<<std::endl;
   if (defaultTarget.arity) curr->value = popNonVoidExpression();
+  curr->finalize();
 }
 
 Expression* WasmBinaryBuilder::visitCall() {
@@ -1819,6 +2034,7 @@ Expression* WasmBinaryBuilder::visitCall() {
     call->target = import->name;
     type = wasm.getFunctionType(import->functionType);
     fillCall(call, type);
+    call->finalize();
     ret = call;
   } else {
     // this is a call of a defined function
@@ -1830,6 +2046,7 @@ Expression* WasmBinaryBuilder::visitCall() {
     type = functionTypes[adjustedIndex];
     fillCall(call, type);
     functionCalls[adjustedIndex].push_back(call); // we don't know function names yet
+    call->finalize();
     ret = call;
   }
   return ret;
@@ -1852,6 +2069,7 @@ void WasmBinaryBuilder::visitCallIndirect(CallIndirect *curr) {
     curr->operands[num - i - 1] = popNonVoidExpression();
   }
   curr->type = fullType->result;
+  curr->finalize();
 }
 
 void WasmBinaryBuilder::visitGetLocal(GetLocal *curr) {
@@ -1864,6 +2082,7 @@ void WasmBinaryBuilder::visitGetLocal(GetLocal *curr) {
     throw ParseException("bad get_local index");
   }
   curr->type = currFunction->getLocalType(curr->index);
+  curr->finalize();
 }
 
 void WasmBinaryBuilder::visitSetLocal(SetLocal *curr, uint8_t code) {
@@ -1878,6 +2097,7 @@ void WasmBinaryBuilder::visitSetLocal(SetLocal *curr, uint8_t code) {
   curr->value = popNonVoidExpression();
   curr->type = curr->value->type;
   curr->setTee(code == BinaryConsts::TeeLocal);
+  curr->finalize();
 }
 
 void WasmBinaryBuilder::visitGetGlobal(GetGlobal *curr) {
@@ -1902,6 +2122,7 @@ void WasmBinaryBuilder::visitSetGlobal(SetGlobal *curr) {
   auto index = getU32LEB();
   curr->name = getGlobalName(index);
   curr->value = popNonVoidExpression();
+  curr->finalize();
 }
 
 void WasmBinaryBuilder::readMemoryAccess(Address& alignment, size_t bytes, Address& offset) {
@@ -1931,6 +2152,7 @@ bool WasmBinaryBuilder::maybeVisitLoad(Expression*& out, uint8_t code) {
   if (debug) std::cerr << "zz node: Load" << std::endl;
   readMemoryAccess(curr->align, curr->bytes, curr->offset);
   curr->ptr = popNonVoidExpression();
+  curr->finalize();
   out = curr;
   return true;
 }
@@ -2033,6 +2255,7 @@ bool WasmBinaryBuilder::maybeVisitUnary(Expression*& out, uint8_t code) {
   }
   if (debug) std::cerr << "zz node: Unary" << std::endl;
   curr->value = popNonVoidExpression();
+  curr->finalize();
   out = curr;
   return true;
 }
@@ -2115,6 +2338,7 @@ void WasmBinaryBuilder::visitReturn(Return *curr) {
   if (currFunction->result != none) {
     curr->value = popNonVoidExpression();
   }
+  curr->finalize();
 }
 
 bool WasmBinaryBuilder::maybeVisitHost(Expression*& out, uint8_t code) {
@@ -2154,6 +2378,7 @@ void WasmBinaryBuilder::visitUnreachable(Unreachable *curr) {
 void WasmBinaryBuilder::visitDrop(Drop *curr) {
   if (debug) std::cerr << "zz node: Drop" << std::endl;
   curr->value = popNonVoidExpression();
+  curr->finalize();
 }
 
 } // namespace wasm
