@@ -1722,10 +1722,12 @@ Ref Wasm2AsmBuilder::processFunctionBody(Function* func, IString result) {
     Ref visitReturn(Return* curr) {
       Ref val = (curr->value == nullptr) ?
           Ref() :
+          curr->value->type != func->result ?
           makeAsmCoercion(
             visit(curr->value, NO_RESULT),
             wasmToAsmType(curr->value->type)
-          );
+          ) :
+          visit(curr->value, NO_RESULT);
       return ValueBuilder::makeReturn(val);
     }
 
