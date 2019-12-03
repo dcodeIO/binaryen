@@ -173,13 +173,11 @@ ENDIF()
 IF (EMSCRIPTEN)
   # link with -O3 for metadce and other powerful optimizations. note that we
   # must use add_link_options so that this appears after CMake's default -O2
-  add_link_options("-O3")
+  add_link_options("-O2")
   ADD_LINK_FLAG("-s SINGLE_FILE")
   ADD_LINK_FLAG("-s ALLOW_MEMORY_GROWTH=1")
   ADD_COMPILE_FLAG("-s DISABLE_EXCEPTION_CATCHING=0")
   ADD_LINK_FLAG("-s DISABLE_EXCEPTION_CATCHING=0")
-  ADD_COMPILE_FLAG("-s ASSERTIONS=1")
-  ADD_LINK_FLAG("-s ASSERTIONS=1")
   # make the tools immediately usable on Node.js
   ADD_LINK_FLAG("-s NODERAWFS")
   # this can be moved into the fastcomp section once upstream ignores this flag,
