@@ -236,6 +236,13 @@ template<typename T> void visitImmediates(Expression* curr, T& visitor) {
     void visitTupleExtract(TupleExtract* curr) {
       visitor.visitIndex(curr->index);
     }
+    void visitStructNew(StructNew* curr) {}
+    void visitStructGet(StructGet* curr) { visitor.visitIndex(curr->index); }
+    void visitStructSet(StructSet* curr) { visitor.visitIndex(curr->index); }
+    void visitArrayNew(ArrayNew* curr) {}
+    void visitArrayGet(ArrayGet* curr) {}
+    void visitArraySet(ArraySet* curr) {}
+    void visitArrayLen(ArrayLen* curr) {}
   } singleton(curr, visitor);
 }
 

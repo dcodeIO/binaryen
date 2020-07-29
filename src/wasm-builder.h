@@ -609,6 +609,53 @@ public:
     ret->finalize();
     return ret;
   }
+  StructNew* makeStructNew(Type type) {
+    auto* ret = allocator.alloc<StructNew>();
+    ret->type = type;
+    return ret;
+  }
+  StructGet* makeStructGet(Expression* rttref, Index index) {
+    auto* ret = allocator.alloc<StructGet>();
+    ret->rttref = rttref;
+    ret->index = index;
+    ret->finalize();
+    return ret;
+  }
+  StructSet* makeStructSet(Expression* rttref, Index index, Expression* value) {
+    auto* ret = allocator.alloc<StructSet>();
+    ret->rttref = rttref;
+    ret->index = index;
+    ret->value = value;
+    ret->finalize();
+    return ret;
+  }
+  ArrayNew* makeArrayNew(Type type) {
+    auto* ret = allocator.alloc<ArrayNew>();
+    ret->type = type;
+    return ret;
+  }
+  ArrayGet* makeArrayGet(Expression* rttref, Expression* index) {
+    auto* ret = allocator.alloc<ArrayGet>();
+    ret->rttref = rttref;
+    ret->index = index;
+    ret->finalize();
+    return ret;
+  }
+  ArraySet*
+  makeArraySet(Expression* rttref, Expression* index, Expression* value) {
+    auto* ret = allocator.alloc<ArraySet>();
+    ret->rttref = rttref;
+    ret->index = index;
+    ret->value = value;
+    ret->finalize();
+    return ret;
+  }
+  ArrayLen* makeArrayLen(Expression* rttref) {
+    auto* ret = allocator.alloc<ArrayLen>();
+    ret->rttref = rttref;
+    ret->finalize();
+    return ret;
+  }
 
   // Additional helpers
 

@@ -139,6 +139,13 @@ void ReFinalize::visitUnreachable(Unreachable* curr) { curr->finalize(); }
 void ReFinalize::visitPop(Pop* curr) { curr->finalize(); }
 void ReFinalize::visitTupleMake(TupleMake* curr) { curr->finalize(); }
 void ReFinalize::visitTupleExtract(TupleExtract* curr) { curr->finalize(); }
+void ReFinalize::visitStructNew(StructNew* curr) { curr->finalize(); }
+void ReFinalize::visitStructGet(StructGet* curr) { curr->finalize(); }
+void ReFinalize::visitStructSet(StructSet* curr) { curr->finalize(); }
+void ReFinalize::visitArrayNew(ArrayNew* curr) { curr->finalize(); }
+void ReFinalize::visitArrayGet(ArrayGet* curr) { curr->finalize(); }
+void ReFinalize::visitArraySet(ArraySet* curr) { curr->finalize(); }
+void ReFinalize::visitArrayLen(ArrayLen* curr) { curr->finalize(); }
 
 void ReFinalize::visitFunction(Function* curr) {
   // we may have changed the body from unreachable to none, which might be bad

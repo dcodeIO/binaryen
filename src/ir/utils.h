@@ -158,6 +158,13 @@ struct ReFinalize
   void visitPop(Pop* curr);
   void visitTupleMake(TupleMake* curr);
   void visitTupleExtract(TupleExtract* curr);
+  void visitStructNew(StructNew* curr);
+  void visitStructGet(StructGet* curr);
+  void visitStructSet(StructSet* curr);
+  void visitArrayNew(ArrayNew* curr);
+  void visitArrayGet(ArrayGet* curr);
+  void visitArraySet(ArraySet* curr);
+  void visitArrayLen(ArrayLen* curr);
 
   void visitFunction(Function* curr);
 
@@ -226,6 +233,13 @@ struct ReFinalizeNode : public OverriddenVisitor<ReFinalizeNode> {
   void visitPop(Pop* curr) { curr->finalize(); }
   void visitTupleMake(TupleMake* curr) { curr->finalize(); }
   void visitTupleExtract(TupleExtract* curr) { curr->finalize(); }
+  void visitStructNew(StructNew* curr) { curr->finalize(); }
+  void visitStructGet(StructGet* curr) { curr->finalize(); }
+  void visitStructSet(StructSet* curr) { curr->finalize(); }
+  void visitArrayNew(ArrayNew* curr) { curr->finalize(); }
+  void visitArrayGet(ArrayGet* curr) { curr->finalize(); }
+  void visitArraySet(ArraySet* curr) { curr->finalize(); }
+  void visitArrayLen(ArrayLen* curr) { curr->finalize(); }
 
   void visitExport(Export* curr) { WASM_UNREACHABLE("unimp"); }
   void visitGlobal(Global* curr) { WASM_UNREACHABLE("unimp"); }

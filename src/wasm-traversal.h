@@ -84,6 +84,13 @@ template<typename SubType, typename ReturnType = void> struct Visitor {
   ReturnType visitPop(Pop* curr) { return ReturnType(); }
   ReturnType visitTupleMake(TupleMake* curr) { return ReturnType(); }
   ReturnType visitTupleExtract(TupleExtract* curr) { return ReturnType(); }
+  ReturnType visitStructNew(StructNew* curr) { return ReturnType(); }
+  ReturnType visitStructGet(StructGet* curr) { return ReturnType(); }
+  ReturnType visitStructSet(StructSet* curr) { return ReturnType(); }
+  ReturnType visitArrayNew(ArrayNew* curr) { return ReturnType(); }
+  ReturnType visitArrayGet(ArrayGet* curr) { return ReturnType(); }
+  ReturnType visitArraySet(ArraySet* curr) { return ReturnType(); }
+  ReturnType visitArrayLen(ArrayLen* curr) { return ReturnType(); }
   // Module-level visitors
   ReturnType visitExport(Export* curr) { return ReturnType(); }
   ReturnType visitGlobal(Global* curr) { return ReturnType(); }
@@ -195,6 +202,20 @@ template<typename SubType, typename ReturnType = void> struct Visitor {
         DELEGATE(TupleMake);
       case Expression::Id::TupleExtractId:
         DELEGATE(TupleExtract);
+      case Expression::Id::StructNewId:
+        DELEGATE(StructNew);
+      case Expression::Id::StructGetId:
+        DELEGATE(StructGet);
+      case Expression::Id::StructSetId:
+        DELEGATE(StructSet);
+      case Expression::Id::ArrayNewId:
+        DELEGATE(ArrayNew);
+      case Expression::Id::ArrayGetId:
+        DELEGATE(ArrayGet);
+      case Expression::Id::ArraySetId:
+        DELEGATE(ArraySet);
+      case Expression::Id::ArrayLenId:
+        DELEGATE(ArrayLen);
       case Expression::Id::InvalidId:
       default:
         WASM_UNREACHABLE("unexpected expression type");
@@ -265,6 +286,13 @@ struct OverriddenVisitor {
   UNIMPLEMENTED(Pop);
   UNIMPLEMENTED(TupleMake);
   UNIMPLEMENTED(TupleExtract);
+  UNIMPLEMENTED(StructNew);
+  UNIMPLEMENTED(StructGet);
+  UNIMPLEMENTED(StructSet);
+  UNIMPLEMENTED(ArrayNew);
+  UNIMPLEMENTED(ArrayGet);
+  UNIMPLEMENTED(ArraySet);
+  UNIMPLEMENTED(ArrayLen);
   UNIMPLEMENTED(Export);
   UNIMPLEMENTED(Global);
   UNIMPLEMENTED(Function);
@@ -377,6 +405,20 @@ struct OverriddenVisitor {
         DELEGATE(TupleMake);
       case Expression::Id::TupleExtractId:
         DELEGATE(TupleExtract);
+      case Expression::Id::StructNewId:
+        DELEGATE(StructNew);
+      case Expression::Id::StructGetId:
+        DELEGATE(StructGet);
+      case Expression::Id::StructSetId:
+        DELEGATE(StructSet);
+      case Expression::Id::ArrayNewId:
+        DELEGATE(ArrayNew);
+      case Expression::Id::ArrayGetId:
+        DELEGATE(ArrayGet);
+      case Expression::Id::ArraySetId:
+        DELEGATE(ArraySet);
+      case Expression::Id::ArrayLenId:
+        DELEGATE(ArrayLen);
       case Expression::Id::InvalidId:
       default:
         WASM_UNREACHABLE("unexpected expression type");
@@ -534,6 +576,27 @@ struct UnifiedExpressionVisitor : public Visitor<SubType, ReturnType> {
     return static_cast<SubType*>(this)->visitExpression(curr);
   }
   ReturnType visitTupleExtract(TupleExtract* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitStructNew(StructNew* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitStructGet(StructGet* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitStructSet(StructSet* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitArrayNew(ArrayNew* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitArrayGet(ArrayGet* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitArraySet(ArraySet* curr) {
+    return static_cast<SubType*>(this)->visitExpression(curr);
+  }
+  ReturnType visitArrayLen(ArrayLen* curr) {
     return static_cast<SubType*>(this)->visitExpression(curr);
   }
 };
@@ -850,6 +913,27 @@ struct Walker : public VisitorType {
   static void doVisitTupleExtract(SubType* self, Expression** currp) {
     self->visitTupleExtract((*currp)->cast<TupleExtract>());
   }
+  static void doVisitStructNew(SubType* self, Expression** currp) {
+    self->visitStructNew((*currp)->cast<StructNew>());
+  }
+  static void doVisitStructGet(SubType* self, Expression** currp) {
+    self->visitStructGet((*currp)->cast<StructGet>());
+  }
+  static void doVisitStructSet(SubType* self, Expression** currp) {
+    self->visitStructSet((*currp)->cast<StructSet>());
+  }
+  static void doVisitArrayNew(SubType* self, Expression** currp) {
+    self->visitArrayNew((*currp)->cast<ArrayNew>());
+  }
+  static void doVisitArrayGet(SubType* self, Expression** currp) {
+    self->visitArrayGet((*currp)->cast<ArrayGet>());
+  }
+  static void doVisitArraySet(SubType* self, Expression** currp) {
+    self->visitArraySet((*currp)->cast<ArraySet>());
+  }
+  static void doVisitArrayLen(SubType* self, Expression** currp) {
+    self->visitArrayLen((*currp)->cast<ArrayLen>());
+  }
 
   void setModule(Module* module) { currModule = module; }
 
@@ -1146,6 +1230,36 @@ struct PostWalker : public Walker<SubType, VisitorType> {
         self->pushTask(SubType::scan, &curr->cast<TupleExtract>()->tuple);
         break;
       }
+      case Expression::Id::StructNewId: {
+        self->pushTask(SubType::doVisitStructNew, currp);
+        break;
+      }
+      case Expression::Id::StructGetId: {
+        self->pushTask(SubType::doVisitStructGet, currp);
+        break;
+      }
+      case Expression::Id::StructSetId: {
+        self->pushTask(SubType::doVisitStructSet, currp);
+        self->pushTask(SubType::scan, &curr->cast<StructSet>()->value);
+        break;
+      }
+      case Expression::Id::ArrayNewId: {
+        self->pushTask(SubType::doVisitArrayNew, currp);
+        break;
+      }
+      case Expression::Id::ArrayGetId: {
+        self->pushTask(SubType::doVisitArrayGet, currp);
+        break;
+      }
+      case Expression::Id::ArraySetId: {
+        self->pushTask(SubType::doVisitArraySet, currp);
+        self->pushTask(SubType::scan, &curr->cast<ArraySet>()->value);
+        break;
+      }
+      case Expression::Id::ArrayLenId: {
+        self->pushTask(SubType::doVisitArrayLen, currp);
+        break;
+      }
       case Expression::Id::NumExpressionIds:
         WASM_UNREACHABLE("unexpected expression type");
     }
@@ -1210,7 +1324,8 @@ struct ControlFlowWalker : public PostWalker<SubType, VisitorType> {
         self->pushTask(SubType::doPostVisitControlFlow, currp);
         break;
       }
-      default: {}
+      default: {
+      }
     }
 
     PostWalker<SubType, VisitorType>::scan(self, currp);
@@ -1223,7 +1338,8 @@ struct ControlFlowWalker : public PostWalker<SubType, VisitorType> {
         self->pushTask(SubType::doPreVisitControlFlow, currp);
         break;
       }
-      default: {}
+      default: {
+      }
     }
   }
 };

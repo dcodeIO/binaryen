@@ -1470,6 +1470,34 @@ struct PrintExpressionContents
     printMedium(o, "tuple.extract ");
     o << curr->index;
   }
+  void visitStructNew(StructNew* curr) {
+    printMedium(o, "struct.new ");
+    o << curr->type;
+  }
+  void visitStructGet(StructGet* curr) {
+    printMedium(o, "struct.get ");
+    o << curr->type << " " << curr->index;
+  }
+  void visitStructSet(StructSet* curr) {
+    printMedium(o, "struct.set ");
+    o << curr->type << " " << curr->index;
+  }
+  void visitArrayNew(ArrayNew* curr) {
+    printMedium(o, "array.new ");
+    o << curr->type;
+  }
+  void visitArrayGet(ArrayGet* curr) {
+    printMedium(o, "array.get ");
+    o << curr->type;
+  }
+  void visitArraySet(ArraySet* curr) {
+    printMedium(o, "array.set ");
+    o << curr->type;
+  }
+  void visitArrayLen(ArrayLen* curr) {
+    printMedium(o, "array.len ");
+    o << curr->type;
+  }
 };
 
 // Prints an expression in s-expr format, including both the
@@ -2051,6 +2079,45 @@ struct PrintSExpression : public OverriddenVisitor<PrintSExpression> {
     incIndent();
     printFullLine(curr->tuple);
     decIndent();
+  }
+  void visitStructNew(StructNew* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    o << ')';
+  }
+  void visitStructGet(StructGet* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    o << ')';
+  }
+  void visitStructSet(StructSet* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    incIndent();
+    printFullLine(curr->value);
+    decIndent();
+  }
+  void visitArrayNew(ArrayNew* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    o << ')';
+  }
+  void visitArrayGet(ArrayGet* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    o << ')';
+  }
+  void visitArraySet(ArraySet* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    incIndent();
+    printFullLine(curr->value);
+    decIndent();
+  }
+  void visitArrayLen(ArrayLen* curr) {
+    o << '(';
+    PrintExpressionContents(currFunction, o).visit(curr);
+    o << ')';
   }
   // Module-level visitors
   void handleSignature(Signature curr, Name* funcName = nullptr) {

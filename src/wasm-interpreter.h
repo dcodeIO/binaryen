@@ -1305,6 +1305,13 @@ public:
     flow.breakTo = curr->name;
     return flow;
   }
+  Flow visitStructNew(StructNew* curr) { WASM_UNREACHABLE("unimp"); }
+  Flow visitStructGet(StructGet* curr) { WASM_UNREACHABLE("unimp"); }
+  Flow visitStructSet(StructSet* curr) { WASM_UNREACHABLE("unimp"); }
+  Flow visitArrayNew(ArrayNew* curr) { WASM_UNREACHABLE("unimp"); }
+  Flow visitArrayGet(ArrayGet* curr) { WASM_UNREACHABLE("unimp"); }
+  Flow visitArraySet(ArraySet* curr) { WASM_UNREACHABLE("unimp"); }
+  Flow visitArrayLen(ArrayLen* curr) { WASM_UNREACHABLE("unimp"); }
 
   virtual void trap(const char* why) { WASM_UNREACHABLE("unimp"); }
 
@@ -1542,6 +1549,34 @@ public:
   }
   Flow visitTry(Try* curr) {
     NOTE_ENTER("Try");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitStructNew(StructNew* curr) {
+    NOTE_ENTER("StructNew");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitStructGet(StructGet* curr) {
+    NOTE_ENTER("StructGet");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitStructSet(StructSet* curr) {
+    NOTE_ENTER("StructSet");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitArrayNew(ArrayNew* curr) {
+    NOTE_ENTER("ArrayNew");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitArrayGet(ArrayGet* curr) {
+    NOTE_ENTER("ArrayGet");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitArraySet(ArraySet* curr) {
+    NOTE_ENTER("ArraySet");
+    return Flow(NONCONSTANT_FLOW);
+  }
+  Flow visitArrayLen(ArrayLen* curr) {
+    NOTE_ENTER("ArrayLen");
     return Flow(NONCONSTANT_FLOW);
   }
 

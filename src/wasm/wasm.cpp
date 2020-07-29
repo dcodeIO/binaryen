@@ -200,6 +200,20 @@ const char* getExpressionName(Expression* curr) {
       return "tuple.make";
     case Expression::Id::TupleExtractId:
       return "tuple.extract";
+    case Expression::Id::StructNewId:
+      return "struct.new";
+    case Expression::Id::StructGetId:
+      return "struct.get";
+    case Expression::Id::StructSetId:
+      return "struct.set";
+    case Expression::Id::ArrayNewId:
+      return "array.new";
+    case Expression::Id::ArrayGetId:
+      return "array.get";
+    case Expression::Id::ArraySetId:
+      return "array.set";
+    case Expression::Id::ArrayLenId:
+      return "array.len";
     case Expression::Id::NumExpressionIds:
       WASM_UNREACHABLE("invalid expr id");
   }
@@ -949,6 +963,24 @@ void TupleExtract::finalize() {
     type = tuple->type.expand()[index];
   }
 }
+
+void ArrayNew::finalize() {}
+
+void ArrayGet::finalize() {
+  // TODO
+}
+
+void ArraySet::finalize() { type = Type::none; }
+
+void ArrayLen::finalize() { type = Type::i32; }
+
+void StructNew::finalize() {}
+
+void StructGet::finalize() {
+  // TODO
+}
+
+void StructSet::finalize() { type = Type::none; }
 
 size_t Function::getNumParams() { return sig.params.size(); }
 

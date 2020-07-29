@@ -145,6 +145,13 @@ public:
   void visitPop(Pop* curr);
   void visitTupleMake(TupleMake* curr);
   void visitTupleExtract(TupleExtract* curr);
+  void visitStructNew(StructNew* curr);
+  void visitStructGet(StructGet* curr);
+  void visitStructSet(StructSet* curr);
+  void visitArrayNew(ArrayNew* curr);
+  void visitArrayGet(ArrayGet* curr);
+  void visitArraySet(ArraySet* curr);
+  void visitArrayLen(ArrayLen* curr);
 
   void emitResultType(Type type);
   void emitIfElse(If* curr);
@@ -238,6 +245,13 @@ public:
   void visitPop(Pop* curr);
   void visitTupleMake(TupleMake* curr);
   void visitTupleExtract(TupleExtract* curr);
+  void visitStructNew(StructNew* curr);
+  void visitStructGet(StructGet* curr);
+  void visitStructSet(StructSet* curr);
+  void visitArrayNew(ArrayNew* curr);
+  void visitArrayGet(ArrayGet* curr);
+  void visitArraySet(ArraySet* curr);
+  void visitArrayLen(ArrayLen* curr);
 
 protected:
   Function* func = nullptr;
@@ -812,6 +826,71 @@ void BinaryenIRWriter<SubType>::visitTupleMake(TupleMake* curr) {
 template<typename SubType>
 void BinaryenIRWriter<SubType>::visitTupleExtract(TupleExtract* curr) {
   visit(curr->tuple);
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitStructNew(StructNew* curr) {
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitStructGet(StructGet* curr) {
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitStructSet(StructSet* curr) {
+  visit(curr->value);
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitArrayNew(ArrayNew* curr) {
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitArrayGet(ArrayGet* curr) {
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitArraySet(ArraySet* curr) {
+  visit(curr->value);
+  if (curr->type == Type::unreachable) {
+    emitUnreachable();
+    return;
+  }
+  emit(curr);
+}
+
+template<typename SubType>
+void BinaryenIRWriter<SubType>::visitArrayLen(ArrayLen* curr) {
   if (curr->type == Type::unreachable) {
     emitUnreachable();
     return;

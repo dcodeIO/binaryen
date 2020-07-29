@@ -586,6 +586,7 @@ enum ASTNodes {
 
   // prefixes
 
+  GCPrefix = 0xfb,
   MiscPrefix = 0xfc,
   SIMDPrefix = 0xfd,
   AtomicPrefix = 0xfe,
@@ -910,6 +911,7 @@ enum ASTNodes {
   RefNull = 0xd0,
   RefIsNull = 0xd1,
   RefFunc = 0xd2,
+  RefEq = 0xd5,
 
   // exception handling opcodes
 
@@ -917,7 +919,33 @@ enum ASTNodes {
   Catch = 0x07,
   Throw = 0x08,
   Rethrow = 0x09,
-  BrOnExn = 0x0a
+  BrOnExn = 0x0a,
+
+  // gc opcodes
+
+  StructNew = 0x00,
+  StructNewWithRtt = 0x01,
+  StructNewDefaultWithRtt = 0x02,
+  StructGet = 0x03,
+  StructGetS = 0x04,
+  StructGetU = 0x05,
+  StructSet = 0x06,
+  ArrayNew = 0x10,
+  ArrayNewWithRtt = 0x11,
+  ArrayNewDefaultWithRtt = 0x12,
+  ArrayGet = 0x13,
+  ArrayGetS = 0x14,
+  ArrayGetU = 0x15,
+  ArraySet = 0x16,
+  ArrayLen = 0x17,
+  I31New = 0x20,
+  I31GetS = 0x21,
+  I31GetU = 0x22,
+  RttCanon = 0x30,
+  RttSub = 0x31,
+  RefTest = 0x40,
+  RefCast = 0x41,
+  BrOnCast = 0x42
 };
 
 enum MemoryAccess {

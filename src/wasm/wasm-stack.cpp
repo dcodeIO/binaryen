@@ -1762,6 +1762,50 @@ void BinaryInstWriter::visitTupleExtract(TupleExtract* curr) {
   o << int8_t(BinaryConsts::LocalGet) << U32LEB(scratch);
 }
 
+void BinaryInstWriter::visitArrayNew(ArrayNew* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::ArrayNew)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none);
+  // TODO
+}
+
+void BinaryInstWriter::visitArrayGet(ArrayGet* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::ArrayGet)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none);
+  // TODO
+}
+
+void BinaryInstWriter::visitArraySet(ArraySet* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::ArraySet)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none);
+  // TODO
+}
+
+void BinaryInstWriter::visitArrayLen(ArrayLen* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::ArrayLen)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none);
+  // TODO
+}
+
+void BinaryInstWriter::visitStructNew(StructNew* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::StructNew)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none);
+  // TODO
+}
+
+void BinaryInstWriter::visitStructGet(StructGet* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::StructGet)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none)
+    << U32LEB(curr->index);
+  // TODO
+}
+
+void BinaryInstWriter::visitStructSet(StructSet* curr) {
+  o << int8_t(BinaryConsts::GCPrefix) << int8_t(BinaryConsts::StructSet)
+    << binaryType(curr->type != Type::unreachable ? curr->type : Type::none)
+    << U32LEB(curr->index);
+  // TODO
+}
+
 void BinaryInstWriter::emitScopeEnd(Expression* curr) {
   assert(!breakStack.empty());
   breakStack.pop_back();

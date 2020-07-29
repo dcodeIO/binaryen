@@ -426,7 +426,8 @@ struct EffectAnalyzer
           implicitTrap = true;
           break;
         }
-        default: {}
+        default: {
+        }
       }
     }
   }
@@ -444,7 +445,8 @@ struct EffectAnalyzer
           implicitTrap = true;
           break;
         }
-        default: {}
+        default: {
+        }
       }
     }
   }
@@ -491,6 +493,13 @@ struct EffectAnalyzer
   }
   void visitTupleMake(TupleMake* curr) {}
   void visitTupleExtract(TupleExtract* curr) {}
+  void visitStructNew(StructNew* curr) {}
+  void visitStructGet(StructGet* curr) {}
+  void visitStructSet(StructSet* curr) {}
+  void visitArrayNew(ArrayNew* curr) {}
+  void visitArrayGet(ArrayGet* curr) {}
+  void visitArraySet(ArraySet* curr) {}
+  void visitArrayLen(ArrayLen* curr) {}
 
   // Helpers
 

@@ -268,6 +268,27 @@ flexibleCopy(Expression* original, Module& wasm, CustomCopier custom) {
     Expression* visitTupleExtract(TupleExtract* curr) {
       return builder.makeTupleExtract(copy(curr->tuple), curr->index);
     }
+    Expression* visitStructNew(StructNew* curr) {
+      return builder.makeStructNew(curr->type);
+    }
+    Expression* visitStructGet(StructGet* curr) {
+      return builder.makeStructGet(curr->rttref, curr->index);
+    }
+    Expression* visitStructSet(StructSet* curr) {
+      return builder.makeStructSet(curr->rttref, curr->index, curr->value);
+    }
+    Expression* visitArrayNew(ArrayNew* curr) {
+      return builder.makeArrayNew(curr->type);
+    }
+    Expression* visitArrayGet(ArrayGet* curr) {
+      return builder.makeArrayGet(curr->rttref, curr->index);
+    }
+    Expression* visitArraySet(ArraySet* curr) {
+      return builder.makeArraySet(curr->rttref, curr->index, curr->value);
+    }
+    Expression* visitArrayLen(ArrayLen* curr) {
+      return builder.makeArrayLen(curr->rttref);
+    }
   };
 
   Copier copier(wasm, custom);

@@ -371,6 +371,20 @@ struct DeadCodeElimination
           DELEGATE(TupleMake);
         case Expression::Id::TupleExtractId:
           DELEGATE(TupleExtract);
+        case Expression::Id::StructNewId:
+          DELEGATE(StructNew);
+        case Expression::Id::StructGetId:
+          DELEGATE(StructGet);
+        case Expression::Id::StructSetId:
+          DELEGATE(StructSet);
+        case Expression::Id::ArrayNewId:
+          DELEGATE(ArrayNew);
+        case Expression::Id::ArrayGetId:
+          DELEGATE(ArrayGet);
+        case Expression::Id::ArraySetId:
+          DELEGATE(ArraySet);
+        case Expression::Id::ArrayLenId:
+          DELEGATE(ArrayLen);
         case Expression::Id::InvalidId:
           WASM_UNREACHABLE("unimp");
         case Expression::Id::NumExpressionIds:
@@ -520,6 +534,14 @@ struct DeadCodeElimination
   }
 
   void visitHost(Host* curr) { handleCall(curr); }
+
+  void visitStructSet(StructSet* curr) {
+    blockifyReachableOperands({curr->value}, curr->type);
+  }
+
+  void visitArraySet(ArraySet* curr) {
+    blockifyReachableOperands({curr->index, curr->value}, curr->type);
+  }
 
   void visitFunction(Function* curr) { assert(reachableBreaks.size() == 0); }
 };

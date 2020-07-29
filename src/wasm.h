@@ -558,6 +558,13 @@ public:
     BrOnExnId,
     TupleMakeId,
     TupleExtractId,
+    StructNewId,
+    StructGetId,
+    StructSetId,
+    ArrayNewId,
+    ArrayGetId,
+    ArraySetId,
+    ArrayLenId,
     NumExpressionIds
   };
   Id _id;
@@ -1173,6 +1180,78 @@ public:
 
   Expression* tuple;
   Index index;
+
+  void finalize();
+};
+
+class StructNew : public SpecificExpression<Expression::StructNewId> {
+public:
+  StructNew() = default;
+  StructNew(MixedArena& allocator) : StructNew() {}
+
+  void finalize();
+};
+
+class StructGet : public SpecificExpression<Expression::StructGetId> {
+public:
+  StructGet() = default;
+  StructGet(MixedArena& allocator) : StructGet() {}
+
+  Expression* rttref;
+  Index index;
+
+  void finalize();
+};
+
+class StructSet : public SpecificExpression<Expression::StructSetId> {
+public:
+  StructSet() = default;
+  StructSet(MixedArena& allocator) : StructSet() {}
+
+  Expression* rttref;
+  Index index;
+  Expression* value;
+
+  void finalize();
+};
+
+class ArrayNew : public SpecificExpression<Expression::ArrayNewId> {
+public:
+  ArrayNew() = default;
+  ArrayNew(MixedArena& allocator) : ArrayNew() {}
+
+  void finalize();
+};
+
+class ArrayGet : public SpecificExpression<Expression::ArrayGetId> {
+public:
+  ArrayGet() = default;
+  ArrayGet(MixedArena& allocator) : ArrayGet() {}
+
+  Expression* rttref;
+  Expression* index;
+
+  void finalize();
+};
+
+class ArraySet : public SpecificExpression<Expression::ArraySetId> {
+public:
+  ArraySet() = default;
+  ArraySet(MixedArena& allocator) : ArraySet() {}
+
+  Expression* rttref;
+  Expression* index;
+  Expression* value;
+
+  void finalize();
+};
+
+class ArrayLen : public SpecificExpression<Expression::ArrayLenId> {
+public:
+  ArrayLen() = default;
+  ArrayLen(MixedArena& allocator) : ArrayLen() {}
+
+  Expression* rttref;
 
   void finalize();
 };

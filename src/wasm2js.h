@@ -645,7 +645,9 @@ void Wasm2JSBuilder::addGlobal(Ref ast, Global* global) {
           ValueBuilder::makeDouble(const_->value.getf64()), ASM_DOUBLE);
         break;
       }
-      default: { assert(false && "Top const type not supported"); }
+      default: {
+        assert(false && "Top const type not supported");
+      }
     }
     Ref theVar = ValueBuilder::makeVar();
     ast->push_back(theVar);
@@ -2038,6 +2040,34 @@ Ref Wasm2JSBuilder::processFunctionBody(Module* m,
       WASM_UNREACHABLE("unimp");
     }
     Ref visitTupleExtract(TupleExtract* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitStructNew(StructNew* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitStructGet(StructGet* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitStructSet(StructSet* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitArrayNew(ArrayNew* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitArrayGet(ArrayGet* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitArraySet(ArraySet* curr) {
+      unimplemented(curr);
+      WASM_UNREACHABLE("unimp");
+    }
+    Ref visitArrayLen(ArrayLen* curr) {
       unimplemented(curr);
       WASM_UNREACHABLE("unimp");
     }
