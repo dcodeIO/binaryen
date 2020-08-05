@@ -30,7 +30,7 @@ namespace std {
 template<> class hash<vector<wasm::Type>> {
 public:
   size_t operator()(const vector<wasm::Type>& types) const {
-    auto res = hash<size_t>{}(types.size());
+    uint64_t res = wasm::rehash(0, uint32_t(types.size()));
     for (auto t : types) {
       res = wasm::rehash(res, t.getID());
     }
@@ -39,7 +39,7 @@ public:
 };
 
 size_t hash<wasm::Type>::operator()(const wasm::Type& type) const {
-  return wasm::rehash(uint64_t(0), type.getID());
+  return hash<uint64_t>{}(type.getID());
 }
 
 size_t hash<wasm::Signature>::operator()(const wasm::Signature& sig) const {
