@@ -32,60 +32,57 @@ public:
   size_t operator()(const vector<wasm::Type>& types) const {
     auto res = hash<size_t>{}(types.size());
     for (auto t : types) {
-      wasm::hash_combine(res, t.getID());
+      res = wasm::rehash(res, t.getID());
     }
     return res;
   }
 };
 
 size_t hash<wasm::Type>::operator()(const wasm::Type& type) const {
-  return hash<uint64_t>{}(type.getID());
+  return wasm::rehash(uint64_t(0), type.getID());
 }
 
 size_t hash<wasm::Signature>::operator()(const wasm::Signature& sig) const {
-  auto res = hash<uint64_t>{}(sig.params.getID());
-  wasm::hash_combine(res, sig.results.getID());
-  return res;
+  return wasm::rehash(uint64_t(hash<uint64_t>{}(sig.params.getID())),
+                      uint64_t(hash<uint64_t>{}(sig.results.getID())));
 }
 
 size_t hash<wasm::Field>::operator()(const wasm::Field& field) const {
-  auto res = hash<uint64_t>{}(field.type.getID());
-  wasm::hash_combine(res, uint32_t(field.packedType));
-  wasm::hash_combine(res, field.mutable_);
-  return res;
+  return wasm::rehash(uint64_t(hash<uint64_t>{}(field.type.getID())),
+                      uint64_t(field.packedType) << 1 | field.mutable_);
 }
 
 size_t hash<wasm::TypeDef>::operator()(const wasm::TypeDef& typeDef) const {
   auto kind = typeDef.kind;
-  auto res = hash<uint32_t>{}(uint32_t(kind));
+  auto res = wasm::rehash(uint64_t(0), uint64_t(kind));
   switch (kind) {
     case wasm::TypeDef::TupleKind: {
       auto& types = typeDef.tupleDef.tuple.types;
       for (auto t : types) {
-        wasm::hash_combine(res, t.getID());
+        res = wasm::rehash(res, t.getID());
       }
       return res;
     }
     case wasm::TypeDef::SignatureKind: {
       auto& sig = typeDef.signatureDef.signature;
-      wasm::hash_combine(res, sig.params.getID());
-      wasm::hash_combine(res, sig.results.getID());
-      wasm::hash_combine(res, typeDef.isNullable());
+      res = wasm::rehash(res, sig.params.getID());
+      res = wasm::rehash(res, sig.results.getID());
+      res = wasm::rehash(res, typeDef.isNullable());
       return res;
     }
     case wasm::TypeDef::StructKind: {
       auto& fields = typeDef.structDef.struct_.fields;
-      wasm::hash_combine(res, fields.size());
+      res = wasm::rehash(res, fields.size());
       for (auto f : fields) {
-        wasm::hash_combine(res, f);
+        res = wasm::rehash(res, hash<wasm::Field>{}(f));
       }
-      wasm::hash_combine(res, typeDef.isNullable());
+      res = wasm::rehash(res, typeDef.isNullable());
       return res;
     }
     case wasm::TypeDef::ArrayKind: {
       auto& array = typeDef.arrayDef.array;
-      wasm::hash_combine(res, array.element);
-      wasm::hash_combine(res, typeDef.isNullable());
+      res = wasm::rehash(res, hash<wasm::Field>{}(array.element));
+      res = wasm::rehash(res, typeDef.isNullable());
       return res;
     }
   }
