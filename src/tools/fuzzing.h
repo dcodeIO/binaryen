@@ -322,7 +322,9 @@ private:
           assert(wasm.features.hasAnyref());
           options.push_back(Type::funcref);
           options.push_back(Type::externref);
-          options.push_back(Type::exnref);
+          if (wasm.features.hasExceptionHandling()) {
+            options.push_back(Type::exnref);
+          }
           break;
         default:
           break;

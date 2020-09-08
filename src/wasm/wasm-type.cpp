@@ -542,6 +542,8 @@ Type Type::getLeastUpperBound(Type a, Type b) {
     return Type::none; // a poison value that must not be consumed
   }
   if (a.isRef()) {
+    // FIXME: `anyref` is only valid here if the `anyref` feature is enabled,
+    // but this information is not available within `Type` alone.
     return b.isRef() ? Type::anyref : Type::none;
   }
   if (a.isTuple()) {
