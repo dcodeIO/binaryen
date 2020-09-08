@@ -315,7 +315,19 @@ private:
     }
     SmallVector<Type, 2> options;
     options.push_back(type); // includes itself
-    // TODO (GC): subtyping
+    if (wasm.features.hasReferenceTypes()) {
+      TODO_SINGLE_COMPOUND(type);
+      switch (type.getBasic()) {
+        case Type::anyref:
+          assert(wasm.features.hasAnyref());
+          options.push_back(Type::funcref);
+          options.push_back(Type::externref);
+          options.push_back(Type::exnref);
+          break;
+        default:
+          break;
+      }
+    }
     return pick(options);
   }
 
@@ -1349,6 +1361,7 @@ private:
       case Type::funcref:
       case Type::externref:
       case Type::exnref:
+      case Type::anyref:
       case Type::none:
       case Type::unreachable:
         WASM_UNREACHABLE("invalid type");
@@ -1452,6 +1465,7 @@ private:
       case Type::funcref:
       case Type::externref:
       case Type::exnref:
+      case Type::anyref:
       case Type::none:
       case Type::unreachable:
         WASM_UNREACHABLE("invalid type");
@@ -1580,6 +1594,7 @@ private:
           case Type::funcref:
           case Type::externref:
           case Type::exnref:
+          case Type::anyref:
           case Type::none:
           case Type::unreachable:
             WASM_UNREACHABLE("invalid type");
@@ -1624,6 +1639,7 @@ private:
           case Type::funcref:
           case Type::externref:
           case Type::exnref:
+          case Type::anyref:
           case Type::none:
           case Type::unreachable:
             WASM_UNREACHABLE("unexpected type");
@@ -1691,6 +1707,7 @@ private:
           case Type::funcref:
           case Type::externref:
           case Type::exnref:
+          case Type::anyref:
           case Type::none:
           case Type::unreachable:
             WASM_UNREACHABLE("unexpected type");
@@ -1717,6 +1734,7 @@ private:
           case Type::funcref:
           case Type::externref:
           case Type::exnref:
+          case Type::anyref:
           case Type::none:
           case Type::unreachable:
             WASM_UNREACHABLE("unexpected type");
@@ -1826,6 +1844,7 @@ private:
           case Type::funcref:
           case Type::externref:
           case Type::exnref:
+          case Type::anyref:
             return makeTrivial(type);
           case Type::none:
           case Type::unreachable:
@@ -1970,6 +1989,7 @@ private:
       case Type::funcref:
       case Type::externref:
       case Type::exnref:
+      case Type::anyref:
       case Type::none:
       case Type::unreachable:
         WASM_UNREACHABLE("unexpected type");
@@ -2206,6 +2226,7 @@ private:
       case Type::funcref:
       case Type::externref:
       case Type::exnref:
+      case Type::anyref:
       case Type::none:
       case Type::unreachable:
         WASM_UNREACHABLE("unexpected type");
@@ -2412,6 +2433,7 @@ private:
       case Type::funcref:
       case Type::externref:
       case Type::exnref:
+      case Type::anyref:
       case Type::none:
       case Type::unreachable:
         WASM_UNREACHABLE("unexpected type");
@@ -2592,6 +2614,9 @@ private:
     if (wasm.features.hasExceptionHandling()) {
       options.push_back(Type::exnref);
     }
+    if (wasm.features.hasAnyref()) {
+      options.push_back(Type::anyref);
+    }
     return builder.makeRefIsNull(make(pick(options)));
   }
 
@@ -2657,7 +2682,8 @@ private:
         .add(FeatureSet::SIMD, Type::v128)
         .add(FeatureSet::ReferenceTypes, Type::funcref, Type::externref)
         .add(FeatureSet::ReferenceTypes | FeatureSet::ExceptionHandling,
-             Type::exnref));
+             Type::exnref)
+        .add(FeatureSet::ReferenceTypes | FeatureSet::Anyref, Type::anyref));
   }
 
   Type getSingleConcreteType() { return pick(getSingleConcreteTypes()); }
@@ -2697,7 +2723,7 @@ private:
 
   // - funcref cannot be logged because referenced functions can be inlined or
   // removed during optimization
-  // - there's no point in logging externref because it is opaque
+  // - there's no point in logging externref or anyref because these are opaque
   // - don't bother logging tuples
   std::vector<Type> getLoggableTypes() {
     return items(
