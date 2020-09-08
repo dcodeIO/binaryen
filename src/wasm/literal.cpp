@@ -69,10 +69,10 @@ Literal::Literal(const Literal& other) : type(other.type) {
       case Type::none:
         break;
       case Type::externref:
+      case Type::anyref:
         break; // null
       case Type::funcref:
       case Type::exnref:
-      case Type::anyref:
       case Type::unreachable:
         WASM_UNREACHABLE("unexpected type");
     }

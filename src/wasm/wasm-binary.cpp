@@ -2209,6 +2209,8 @@ void WasmBinaryBuilder::readFeatures(size_t payloadLen) {
         wasm.features.setReferenceTypes();
       } else if (name == BinaryConsts::UserSections::MultivalueFeature) {
         wasm.features.setMultivalue();
+      } else if (name == BinaryConsts::UserSections::AnyrefFeature) {
+        wasm.features.setAnyref();
       }
     }
   }
