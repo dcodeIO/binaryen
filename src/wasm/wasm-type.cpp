@@ -541,6 +541,9 @@ Type Type::getLeastUpperBound(Type a, Type b) {
   if (a.size() != b.size()) {
     return Type::none; // a poison value that must not be consumed
   }
+  if (a.isRef()) {
+    return b.isRef() ? Type::anyref : Type::none;
+  }
   if (a.isTuple()) {
     TypeList types;
     types.resize(a.size());
